@@ -44,11 +44,7 @@ def add(amount, memo, date=dt.now().date()):
     try:
         with connection:
             with connection.cursor() as cursor:
-                # cursor.execute(f'''
-                #     INSERT INTO expenses (amount, memo, created_on) 
-                #     VALUES ('{amount}', '{memo}', '{date}');
-                # ''')
-                cursor.execute(f'''
+                cursor.execute('''
                     INSERT INTO expenses (amount, memo, created_on) 
                     VALUES (%s, %s, %s);
                 ''',(amount, memo, date))
