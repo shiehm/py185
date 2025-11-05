@@ -7,76 +7,83 @@ import sys
 
 connection = psycopg2.connect(dbname='expenses')
 
-def help_content():
-    print('An expense recording system')
-    print()
-    print('Commands:')
-    print()
-    print('add AMOUNT MEMO [DATE] - record a new expense')
-    print('clear - delete all expenses')
-    print('list - list all expenses')
-    print('delete NUMBER - remove expense with id NUMBER')
-    print('search QUERY - list expenses with a matching memo field')
+# CLI class processes arguments from the command line
+class CLI():
+    @staticmethod
+    def help_content():
+        print('An expense recording system')
+        print()
+        print('Commands:')
+        print()
+        print('add AMOUNT MEMO [DATE] - record a new expense')
+        print('clear - delete all expenses')
+        print('list - list all expenses')
+        print('delete NUMBER - remove expense with id NUMBER')
+        print('search QUERY - list expenses with a matching memo field')
 
-def return_list():
-    try:
-        with connection:
-            with connection.cursor(cursor_factory=extras.DictCursor) as cursor:
-                cursor.execute('''
-                    SELECT *
-                    FROM expenses
-                    ORDER BY created_on;
-                ''')
-                expenses = cursor.fetchall()
-    finally:
-        connection.close()
+    def __init__(self):
+        self.expenses = ExpenseData()
 
-    for expense in expenses:
-        columns = [
-            str(expense['id']).rjust(3),
-            str(expense['created_on']),
-            str(expense['amount']).rjust(8),
-            str(expense['memo'])
-        ]
-        print(' | '.join(columns))
+    def run(self, cli_args:list):
+        command = cli_args[0]
+        amount = cli_args[1] if len(cli_args) > 1 else None
+        memo = cli_args[2] if len(cli_args) > 2 else None
+        date = cli_args[3] if len(cli_args) > 3 else None
 
-def add(amount, memo, date=dt.now().date()):
-    try:
-        with connection:
-            with connection.cursor() as cursor:
-                cursor.execute('''
-                    INSERT INTO expenses (amount, memo, created_on) 
-                    VALUES (%s, %s, %s);
-                ''',(amount, memo, date))
-    finally:
-        connection.close()
+        if command == 'list':
+            self.expenses.return_list()
+        elif command == 'add':
+            if not amount or not memo:
+                print('Error: You must provide an amount and memo.')
+            elif date:
+                self.expenses.add(amount, memo, date)
+            else:
+                self.expenses.add(amount, memo)
+
+# ExpenseData class interacts with the database, formats, and displays results
+class ExpenseData():
+    def __init__(self):
+        pass
+    
+    def return_list(self):
+        try:
+            with connection:
+                with connection.cursor(cursor_factory=extras.DictCursor) as cursor:
+                    cursor.execute('''
+                        SELECT *
+                        FROM expenses
+                        ORDER BY created_on, id;
+                    ''')
+                    expenses = cursor.fetchall()
+        finally:
+            connection.close()
+
+        for expense in expenses:
+            columns = [
+                str(expense['id']).rjust(3),
+                str(expense['created_on']),
+                str(expense['amount']).rjust(8),
+                str(expense['memo'])
+            ]
+            print(' | '.join(columns))
+
+    def add(self, amount, memo, date=dt.now().date()):
+        try:
+            with connection:
+                with connection.cursor() as cursor:
+                    cursor.execute('''
+                        INSERT INTO expenses (amount, memo, created_on) 
+                        VALUES (%s, %s, %s);
+                    ''',(amount, memo, date))
+        finally:
+            connection.close()
 
 def main():
+    command_line = CLI()
     if len(sys.argv) > 1:
-        command = sys.argv[1]
+        command_line.run(sys.argv[1:])
     else:
-        command = None
-    
-    if command == 'list':
-        return_list()
-        return
-    elif command == 'add':
-        if len(sys.argv) < 4:
-            print('Error: You must provide an amount and memo.')
-            return
-        elif len(sys.argv) == 5:
-            amount = sys.argv[2]
-            memo = sys.argv[3]
-            date = sys.argv[4]
-            add(amount, memo, date)
-            return
-        else:
-            amount = sys.argv[2]
-            memo = sys.argv[3]
-            add(amount, memo)
-            return
-    else:
-        help_content()
+        command_line.help_content()
 
 if __name__ == '__main__':
     main()
