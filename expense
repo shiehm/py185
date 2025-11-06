@@ -1,16 +1,41 @@
 #!/usr/bin/env python
 
 from datetime import datetime as dt
+from decimal import Decimal
 import psycopg2
 from psycopg2 import extras
 import sys
 
-connection = psycopg2.connect(dbname='expenses')
-
 # CLI class processes arguments from the command line
 class CLI():
-    @staticmethod
-    def help_content():
+    def __init__(self):
+        self.application = ExpenseData()
+
+    def _date_parser(self, date):
+        if date is None:
+            return None
+        
+        try:
+            return dt.fromisoformat(date).date()
+        except ValueError:
+            print('Error: Date must be in YYYY-MM-DD format.')
+            return None
+
+    def _amount_parser(self, amount):
+        if not amount:
+            return None
+
+        try:
+            decimal_amount = Decimal(amount)
+            if decimal_amount <= 0:
+                print('Error: Amounts must be greater than 0.')
+                return None
+            return decimal_amount
+        except Exception:
+            print('Error: Amounts must be in integer or decimal format.')
+            return None
+
+    def help_content(self):
         print('An expense recording system')
         print()
         print('Commands:')
@@ -21,38 +46,55 @@ class CLI():
         print('delete NUMBER - remove expense with id NUMBER')
         print('search QUERY - list expenses with a matching memo field')
 
-    def __init__(self):
-        self.expenses = ExpenseData()
-
-    def run(self, cli_args:list):
+    def run(self, cli_args:list|None=None):
+        if not cli_args:
+            self.help_content()
+            return
+        
         command = cli_args[0]
-        amount = cli_args[1] if len(cli_args) > 1 else None
-        memo = cli_args[2] if len(cli_args) > 2 else None
-        date = cli_args[3] if len(cli_args) > 3 else None
 
         if command == 'list':
-            self.expenses.return_list()
-        elif command == 'add':
-            if not amount or not memo:
+            self.application.return_list()
+            return
+        
+        if command == 'add':
+            amount_input = cli_args[1] if len(cli_args) > 1 else None
+            memo = cli_args[2] if len(cli_args) > 2 else None
+            date_input = cli_args[3] if len(cli_args) > 3 else None
+
+            if amount_input is None or memo is None:
                 print('Error: You must provide an amount and memo.')
-            elif date:
-                self.expenses.add(amount, memo, date)
-            else:
-                self.expenses.add(amount, memo)
+                return
+
+            amount = self._amount_parser(amount_input)
+            if amount is None:
+                return
+            
+            if date_input is None:
+                self.application.add(amount, memo)
+                return
+            
+            created_on = self._date_parser(date_input)
+            if created_on is None:
+                return
+            
+            if created_on:
+                self.application.add(amount, memo, created_on)
+                return
+
+        self.help_content()
 
 # ExpenseData class interacts with the database, formats, and displays results
 class ExpenseData():
-    def __init__(self):
-        pass
-    
     def return_list(self):
+        connection = psycopg2.connect(dbname='expenses')
         try:
             with connection:
                 with connection.cursor(cursor_factory=extras.DictCursor) as cursor:
                     cursor.execute('''
                         SELECT *
                         FROM expenses
-                        ORDER BY created_on, id;
+                        ORDER BY created_on DESC, id;
                     ''')
                     expenses = cursor.fetchall()
         finally:
@@ -67,23 +109,21 @@ class ExpenseData():
             ]
             print(' | '.join(columns))
 
-    def add(self, amount, memo, date=dt.now().date()):
+    def add(self, amount, memo, created_on=None):
+        if not created_on:
+            created_on = dt.now().date()
+
+        connection = psycopg2.connect(dbname='expenses')
         try:
             with connection:
                 with connection.cursor() as cursor:
                     cursor.execute('''
                         INSERT INTO expenses (amount, memo, created_on) 
                         VALUES (%s, %s, %s);
-                    ''',(amount, memo, date))
+                    ''',(amount, memo, created_on))
         finally:
             connection.close()
 
-def main():
-    command_line = CLI()
-    if len(sys.argv) > 1:
-        command_line.run(sys.argv[1:])
-    else:
-        command_line.help_content()
-
 if __name__ == '__main__':
-    main()
+    cli = CLI()
+    cli.run(sys.argv[1:])
